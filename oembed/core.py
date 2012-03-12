@@ -11,6 +11,7 @@ try:
 except ImportError:
     from django.utils import simplejson
 from django.conf import settings
+from django.utils.http import urlencode
 from django.utils.safestring import mark_safe
 from oembed.models import ProviderRule, StoredOEmbed
 from django.template.loader import render_to_string
@@ -111,7 +112,7 @@ def replace(text, max_width=MAX_WIDTH, max_height=MAX_HEIGHT):
     dictionary representation of the response.
     """
     rules = list(ProviderRule.objects.all())
-    patterns = [re.compile(r.regex) for r in rules] # Compiled patterns from the rules
+    patterns = [re.compile(r.regex, re.I) for r in rules] # Compiled patterns from the rules
     parts = [] # The parts that we will assemble into the final return value.
     indices = [] # List of indices of parts that need to be replaced with OEmbed stuff.
     indices_rules = [] # List of indices into the rules in order for which index was gotten by.
@@ -152,16 +153,14 @@ def replace(text, max_width=MAX_WIDTH, max_height=MAX_HEIGHT):
         except KeyError:
             try:
                 # Build the URL based on the properties defined in the OEmbed spec.
-                url = u"%s?url=%s&maxwidth=%s&maxheight=%s&format=%s" % (
-                    rule.endpoint, part, max_width, max_height, FORMAT
-                )
+                sep = "?" in rule.endpoint and "&" or "?"
+                q = urlencode({"url": part,
+                               "maxwidth": max_width,
+                               "maxheight": max_height,
+                               "format": FORMAT})
+                url = u"%s%s%s" % (rule.endpoint, sep, q)
                 # Fetch the link and parse the JSON.
                 resp = simplejson.loads(fetch(url))
-                
-                # link types that don't have html elements aren't dealt with right now.
-                if resp['type'] == 'link' and 'html' not in resp:
-                    raise ValueError
-                
                 # Depending on the embed type, grab the associated template and
                 # pass it the parsed JSON response as context.
                 replacement = render_to_string('oembed/%s.html' % resp['type'], {'response': resp})

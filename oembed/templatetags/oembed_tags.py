@@ -7,12 +7,12 @@ register = template.Library()
 def oembed(input, args):
     if args:
         width, height = args.lower().split('x')
+        return replace(input, max_width=width, max_height=height)
         if not width and height:
             raise template.TemplateSyntaxError("Oembed's optional WIDTHxHEIGH" \
                 "T argument requires WIDTH and HEIGHT to be positive integers.")
     else:
-        width, height = None, None
-    return replace(input, max_width=width, max_height=height)
+        return replace(input)
 oembed.is_safe = True
 oembed = stringfilter(oembed)
 
