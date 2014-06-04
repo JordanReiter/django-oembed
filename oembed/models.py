@@ -1,5 +1,10 @@
 import datetime
 from django.db import models
+try:
+    import json
+except ImportError:
+    from django.utils import simplejson as json
+from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 
 JSON = 1
@@ -14,18 +19,28 @@ class ProviderRule(models.Model):
     regex = models.CharField(_("regex"), max_length=2000)
     endpoint = models.CharField(_("endpoint"), max_length=2000)
     format = models.IntegerField(_("format"), choices=FORMAT_CHOICES)
-    
+
     def __unicode__(self):
         return self.name or self.endpoint
-    
+
 
 class StoredOEmbed(models.Model):
     match = models.TextField(_("match"))
     max_width = models.IntegerField(_("max width"))
     max_height = models.IntegerField(_("max height"))
     html = models.TextField(_("html"))
-    date_added = models.DateTimeField(_("date added"), default=datetime.datetime.now)
-    
+    json = models.TextField(_("json"))
+    date_added = models.DateTimeField(
+        _("date added"), default=now)
+
+    class Meta:
+        ordering = ('-max_width',) # larger ones take precedence
+        verbose_name = u'Stored OEmbed'
+        verbose_name_plural = u'Stored OEmbeds'
+
     def __unicode__(self):
         return self.match
-    
+
+    def get_json(self, name):
+        """ Convenience for JSON properties; e.g. get_json('thumbnail_url') """
+        return json.loads(self.json).get(name, None)

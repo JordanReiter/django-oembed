@@ -1,2 +1,11 @@
 Eric Florenzano <floguy@gmail.com>
 Idan Gazit <idan@pixane.net>
+Jannis Leidel <jannis@leidel.info>
+Nathan Borror
+Thejaswi Puthraya
+Brian Rosner
+Jonathan Stasiak
+Simon Meers
+Thomas Ashelford
+Jiří Suchan
+Aram Dulyan
