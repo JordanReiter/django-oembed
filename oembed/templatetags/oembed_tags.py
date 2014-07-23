@@ -4,7 +4,7 @@ from oembed.core import replace
 
 register = template.Library()
 
-def oembed(input, args):
+def oembed(input, args=None):
     if args:
         width, height = args.lower().split('x')
         if not width and height:
