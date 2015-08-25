@@ -1,10 +1,17 @@
-import urllib
-import HTMLParser
+try:
+    from html.parser import HTMLParser
+except ImportError:
+    import HTMLParser
+
+try:
+    from urllib.parse import unquote, unquote_plus
+except ImportError:
+    from urllib import unquote, unquote_plus
 
 import django
 from django import template
 from django.template.defaultfilters import stringfilter
-from django.utils.encoding import smart_str, force_unicode
+from django.utils.encoding import smart_str, force_text
 from oembed.core import replace
 from oembed.models import StoredOEmbed
 
@@ -13,17 +20,17 @@ register = template.Library()
 @register.filter
 def unescape(text):
     """Decoding HTML Entities to Text in Python"""
-    return force_unicode(HTMLParser.HTMLParser().unescape(text))
+    return force_text(HTMLParser.HTMLParser().unescape(text))
 
 
 @register.filter
 def urlunquote(quoted_url):
-    return force_unicode(urllib.unquote(smart_str(quoted_url)))
+    return force_text(unquote(smart_str(quoted_url)))
 
 
 @register.filter
 def urlunquote_plus(quoted_url):
-    return force_unicode(urllib.unquote_plus(smart_str(quoted_url)))
+    return force_text(unquote_plus(smart_str(quoted_url)))
 
 
 def oembed(input, args=None):
