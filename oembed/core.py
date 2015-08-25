@@ -1,27 +1,30 @@
+import json
 import gzip
 import logging
 import os
 import re
-import urllib2
-import urlparse
+
+
+# Different import locations for Py2/Py3 for urllib2/urlparse
 try:
-    from urlparse import parse_qs
+    from urllib2 import HTTPError
 except ImportError:
-    # (copied to urlparse from cgi in 2.6)
-    from cgi import parse_qs
-from heapq import heappush, heappop
+    from urllib.error import HTTPError
 try:
-    from cStringIO import StringIO
+    from urllib.parse import urlsplit, urlunsplit, parse_qs
 except ImportError:
-    from StringIO import StringIO
+    from urlparse import urlunsplit, urlsplit, parse_qs
+try:
+    from urllib.request import build_opener, Request
+except ImportError:
+    from urllib2 import build_opener, Request
+
+
 
 from django.conf import settings
 from django.utils.http import urlencode
-try:
-    import json
-except ImportError:
-    from django.utils import simplejson as json
 from django.utils.safestring import mark_safe
+from django.utils.six import BytesIO
 from django.template.loader import render_to_string
 
 from .models import ProviderRule, StoredOEmbed
@@ -33,19 +36,24 @@ MAX_WIDTH = getattr(settings, "OEMBED_MAX_WIDTH", 320)
 MAX_HEIGHT = getattr(settings, "OEMBED_MAX_HEIGHT", 240)
 FORMAT = getattr(settings, "OEMBED_FORMAT", "json")
 
-def fetch(url, user_agent="django-oembed/0.1"):
+def fetch(url, user_agent="django-oembed/0.1", charset='utf-8'):
     """
     Fetches from a URL, respecting GZip encoding, etc.
     """
-    request = urllib2.Request(url)
+    request = Request(url)
     request.add_header('User-Agent', user_agent)
     request.add_header('Accept-Encoding', 'gzip')
-    opener = urllib2.build_opener()
+    opener = build_opener()
     f = opener.open(request)
     result = f.read()
     if f.headers.get('content-encoding', '') == 'gzip':
-        result = gzip.GzipFile(fileobj=StringIO(result)).read()
+        result = gzip.GzipFile(fileobj=BytesIO(result)).read()
     f.close()
+    content_type = f.headers.get('content-type', '')
+    charset_match = re.search(r'charset=(\S+)', content_type)
+    if charset_match:
+        charset = charset_match.groups()[0]
+    result = result.decode(charset)
     return result
 
 def re_parts(regex_list, text):
@@ -69,26 +77,41 @@ def re_parts(regex_list, text):
     >>> list(re_parts([first_re, second_re, third_re], 'This is an asdf test.'))
     [(-1, 'This is '), (1, 'an'), (-1, ' '), (0, 'asdf'), (-1, ' test.')]
     """
+    def match_push(match_list, key, value):
+        match_list.append((key, value))
+    
+    def match_pop(match_list):
+        if not match_list:
+            raise StopIteration()
+        min_key = None
+        min_paid = None
+        for (kk, vv) in match_list:
+            if not min_key or kk < min_key:
+                min_key = kk
+                min_pair = (kk, vv)
+        match_list.remove(min_pair)
+        return min_pair
+    
     def match_compare(x, y):
         return x.start() - y.start()
     prev_end = 0
     iter_dict = dict((r, r.finditer(text)) for r in regex_list)
     
-    # A heapq containing matches
+    # A simple list; we'll use match_push and match_pop to access it
     matches = []
     
     # Bootstrap the search with the first hit for each iterator
     for regex, iterator in iter_dict.items():
         try:
-            match = iterator.next()
-            heappush(matches, (match.start(), match))
+            match = next(iterator)
+            match_push(matches, match.start(), match)
         except StopIteration:
-            iter_dict.pop(regex)
+            pass
     
     # Process matches, revisiting each iterator from which a match is used
     while matches:
         # Get the earliest match
-        start, match = heappop(matches)
+        start, match = match_pop(matches)
         end = match.end()
         if start > prev_end:
             # Yield the text from current location to start of match
@@ -98,8 +121,8 @@ def re_parts(regex_list, text):
         # Get the next match from the iterator for this match
         if match.re in iter_dict:
             try:
-                newmatch = iter_dict[match.re].next()
-                heappush(matches, (newmatch.start(), newmatch))
+                newmatch = next(iter_dict[match.re])
+                match_push(matches, newmatch.start(), newmatch)
             except StopIteration:
                 iter_dict.pop(match.re)
         prev_end = end
@@ -111,7 +134,7 @@ def re_parts(regex_list, text):
 
 def build_url(endpoint, url, max_width, max_height):
     # Split up the URL and extract GET parameters as a dictionary
-    split_url = urlparse.urlsplit(endpoint)
+    split_url = urlsplit(endpoint)
     params = parse_qs(split_url[3])
     params.update({
         'url': url,
@@ -120,8 +143,8 @@ def build_url(endpoint, url, max_width, max_height):
         'format': FORMAT,
         })
     # Put the URL back together with the new params and return it
-    params = urlencode(params)
-    return urlparse.urlunsplit(split_url[:3] + (params,) + split_url[4:])
+    params = urlencode(params, doseq=True)
+    return urlunsplit(split_url[:3] + (params,) + split_url[4:])
 
 def fetch_dict(url, max_width=None, max_height=None):
     """
@@ -235,7 +258,7 @@ def replace(text, max_width=None, max_height=None, template_dir='oembed'):
                 parts[id_to_replace] = part
             except KeyError:
                 parts[id_to_replace] = part
-            except urllib2.HTTPError:
+            except HTTPError:
                 parts[id_to_replace] = part
     # Combine the list into one string and return it.
     return mark_safe(u''.join(parts).replace('http://','//'))
